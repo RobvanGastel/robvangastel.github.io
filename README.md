@@ -1,2 +1,2 @@
 # robvangastel.github.io
-Personal github page portfolio
+Personal portfolio
