@@ -14,56 +14,93 @@
       <p><a href="https://www.kaggle.com/robvgastel" target="_blank">Kaggle</a></p>
       <br/>
       <p class="projects"><b>Projects</b></p>
-      <p><a href="http://assignapp.nl" target="_blank">Assign</a></p>
-      <p><a href="http://timityapp.com" target="_blank">Timity</a></p>
+      <p><a href="http://meauve.com" target="_blank">Meauve</a></p>
     </div>
   </body>
   <canvas></canvas>
   <script>
-      document.addEventListener('touchmove', function (e) {
-          e.preventDefault()
-      })
-      var c = document.getElementsByTagName('canvas')[0],
-          x = c.getContext('2d'),
-          pr = window.devicePixelRatio || 1,
-          w = window.innerWidth,
-          h = window.innerHeight,
-          f = 90,
-          q,
-          m = Math,
-          r = 0,
-          u = m.PI*2,
-          v = m.cos,
-          z = m.random
-      c.width = w*pr
-      c.height = h*pr
-      x.scale(pr, pr)
-      x.globalAlpha = 0.6
-      function i(){
-          x.clearRect(0,0,w,h)
-          q=[{x:0,y:h*.7+f},{x:0,y:h*.7-f}]
-          while(q[1].x<w+f) d(q[0], q[1])
-      }
-      function d(i,j){   
-          x.beginPath()
-          x.moveTo(i.x, i.y)
-          x.lineTo(j.x, j.y)
-          var k = j.x + (z()*2-0.25)*f,
-              n = y(j.y)
-          x.lineTo(k, n)
-          x.closePath()
-          r-=u/-50
-          x.fillStyle = '#'+(v(r)*127+128<<16 | v(r+u/3)*127+128<<8 | v(r+u/3*2)*127+128).toString(16)
-          x.fill()
-          q[0] = q[1]
-          q[1] = {x:k,y:n}
-      }
-      function y(p){
-          var t = p + (z()*2-1.1)*f
-          return (t>h||t<0) ? y(p) : t
-      }
-      document.onclick = i
-      document.ontouchstart = i
-      i()
+	// JS Port of PlusParticle
+	// k3lab ( http://wonderfl.net/user/k3lab )
+	// http://wa.zozuar.org/code.php?c=hEiW
+	"use strict";
+	const canvas = document.querySelector("canvas");
+	const ctx = canvas.getContext("2d", { lowLatency: true, alpha: false });
+	const w = (canvas.width = canvas.offsetWidth / 2);
+	const h = (canvas.height = canvas.offsetHeight / 2);
+	///////////////////////////////////////
+	const createDot = () => {
+		const dot = document.createElement('canvas');
+		dot.width = 20;
+		dot.height = 20;
+		const ctx = dot.getContext("2d");
+		ctx.globalCompositeOperation = "xor";
+		ctx.fillStyle = "#fff";
+		ctx.fillRect(0, 10 - 2, 20, 2);
+		ctx.fillRect(10 - 2, 0, 2, 20);
+		return dot;
+	}
+	///////////////////////////////////////
+	const Particle = class {
+		constructor(x, y, z) {
+			this.x = x;
+			this.y = y;
+			this.z = z;
+		}
+	};
+	///////////////////////////////////////
+	const count = 4000;
+	const degree = 2 * Math.PI / count;
+	const particles = [];
+	const dot = createDot();
+	///////////////////////////////////////
+	const run = time => {
+		requestAnimationFrame(run);
+		ctx.fillRect(0, 0, w, h);
+		const horizontal = Math.sin(time / 2000) * 2;
+		const vertical = Math.sin(time / 30000);
+		const cosY = Math.cos(horizontal);
+		const sinY = Math.sin(horizontal);
+		const cosX = Math.cos(vertical);
+		const sinX = Math.sin(vertical);
+		const s = 2500 + 1500 * Math.sin(time / 1000);
+		const a = s * 2 / count;
+		const round = degree * 2 * Math.sin(time / 10000);
+		for (let i = 0; i < count; i++) {
+			const p = particles[i];
+			const size = s * Math.sin(time / 10000 + i / 10);
+			const radius = size * Math.sin(degree / 2 * i);
+			p.x = radius * Math.sin(round * i + time / 1000);
+			p.y = radius * Math.cos(round * i + time / 1000);
+			p.z = -s + i * a;
+			const z1 = p.z * cosY + p.x * sinY;
+			const z2 = z1 * cosX + p.y * sinX;
+			if (z2 > -600) {
+				const perspective = 300 / (600 + z2);
+				const px = w / 2 + (p.x * cosY - p.z * sinY) * perspective;
+				const py = h / 2 + (p.y * cosX - z1 * sinX) * perspective;
+				if (px > -30 && px < w && py > -30 && py < h) {
+					let wi = (z2 - 200) * -1 / 200;
+					if (wi < 0.1) wi = 0.1;
+					ctx.save();
+					ctx.translate(px, py);
+					ctx.rotate(i / 100);
+					ctx.scale(wi, wi);
+					ctx.drawImage(dot, -10, -10);
+					ctx.restore();
+				}
+			}
+		}
+	};
+	///////////////////////////////////////
+	for (let i = 0; i < count; i++) {
+		particles.push(
+			new Particle(
+				200 * Math.sin(degree * i),
+				200 * Math.cos(degree * i),
+				-100 + i / 100
+			)
+		);
+	}
+	run();
   </script>
 </html>
