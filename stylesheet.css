@@ -7,14 +7,11 @@ body {
   color: #333;
 }
 #wrapper {
-  position: absolute;
-  left: 0;
-  width: 400px;
+  width: 700px;
+  margin: auto;
+  padding-top: 200px;
   text-align: center;
-  top: 50%;
-  left: 50%;
-  margin-left: -200px;
-  margin-top: -200px;
+  justify-content: center;
   -webkit-user-select: none;
   -moz-user-select: none;
   user-select: none;
@@ -45,10 +42,21 @@ p {
   margin: 0;
   letter-spacing: 2px;
 }
+.title {
+  text-align: left;
+  font-weight: bold;
+}
+.description {
+  font-size: 12px;
+  margin-top: 0px;
+  text-align: left;
+}
 .projects {
-  color: rgb(122, 122, 122);
   text-transform: uppercase;
   font-size: 15px;
+}
+.project-description {
+  font-size: 12px;
 }
 canvas {
   position: absolute;
