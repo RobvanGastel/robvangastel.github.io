@@ -1,5 +1,4 @@
 html, body {
-  overflow: hidden;
   margin: 0;
 }
 body {
@@ -10,6 +9,7 @@ body {
   width: 700px;
   margin: auto;
   padding-top: 200px;
+  padding-bottom: 200px;
   text-align: center;
   justify-content: center;
   -webkit-user-select: none;
