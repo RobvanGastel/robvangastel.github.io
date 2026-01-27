@@ -90,3 +90,10 @@ a:hover {
   text-align: left;
   padding-bottom: 5px;
 }
+
+.project-ref {
+    font-size: 11px;
+    line-height: 2em;
+    letter-spacing: 2px;
+    text-align: left;
+}
