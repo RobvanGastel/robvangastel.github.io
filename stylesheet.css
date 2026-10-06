@@ -97,3 +97,41 @@ a:hover {
     letter-spacing: 2px;
     text-align: left;
 }
+.project {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  margin-bottom: 36px;
+}
+
+.project:first-of-type {
+  margin-top: 16px;
+}
+
+.project-thumb {
+  flex: 0 0 160px;
+}
+
+.project-thumb img,
+.project-thumb video {
+  display: block;
+  width: 160px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .15);
+  /* Drop the image by the title's half-leading so its top edge meets the title text. */
+  margin-top: 8px;
+  transition: transform .2s ease;
+}
+
+.project-thumb:hover img,
+.project-thumb:hover video {
+  transform: scale(1.04);
+}
+
+.project-body {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
