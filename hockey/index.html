@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Air Hockey World Model</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one arcade cabinet. The two generated player views are the screen; controls sit on the
+     cabinet's deck below. Single dark look on purpose: it is the game's own palette. */
+  :root {
+    --ink: #0d0f17;        /* page, the rink's night blue */
+    --deck: #151927;       /* control deck */
+    --rail: #262c40;       /* borders, dividers */
+    --text: #e8e6dd;
+    --muted: #949bb0;
+    --puck: #f0dc5a;       /* the game's puck yellow: the one accent */
+    --blue: #5aa0f0;       /* blue mallet */
+    --red: #f06e6e;        /* red mallet */
+    --display: "Bungee", "Arial Black", Impact, sans-serif;
+    --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: dark;
+  }
+  html, body { background: var(--ink); color: var(--text); }
+  body { margin: 0; font: 15px/1.5 var(--body); }
+  .cabinet {
+    max-width: 880px; margin: 0 auto; display: grid; gap: 18px;
+    padding-block: 20px 32px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  header { display: grid; gap: 6px; }
+  h1 { font: 400 clamp(26px, 5vw, 40px)/1.05 var(--display); color: var(--puck); margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+  header p { margin: 0; color: var(--muted); max-width: 62ch; }
+
+  .screen { display: grid; gap: 8px; }
+  .views { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font: 500 12px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; }
+  .views span { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  .views i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .views .b i { background: var(--blue); } .views .r i { background: var(--red); }
+  .views kbd { font: inherit; color: var(--text); }
+  .glass { position: relative; border: 1px solid var(--rail); border-radius: 10px; overflow: hidden; background: #000; }
+  canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 256 / 160; image-rendering: pixelated; }
+  .overlay {
+    position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px;
+    background: color-mix(in srgb, var(--ink) 62%, transparent);
+  }
+  .overlay[hidden] { display: none !important; }
+  .overlay div { display: grid; gap: 10px; justify-items: center; max-width: 34ch; }
+  .overlay strong { font: 400 20px/1.1 var(--display); color: var(--puck); }
+  .overlay small { color: var(--muted); }
+  .bar { width: min(320px, 70vw); height: 6px; border-radius: 3px; background: var(--rail); overflow: hidden; }
+  .bar b { display: block; height: 100%; width: 0; background: var(--puck); transition: width 0.15s; }
+  #stats { font: 12px/1.4 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.4em; }
+  #stats b { color: var(--text); font-weight: 500; }
+
+  .deck { background: var(--deck); border: 1px solid var(--rail); border-radius: 10px; padding: 16px; display: grid; gap: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; }
+  .field { display: grid; gap: 5px; min-width: 0; }
+  .field > span { font: 500 11px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  select, button { font: inherit; color: var(--text); background: var(--ink); border: 1px solid var(--rail); border-radius: 6px; padding: 7px 10px; }
+  button { cursor: pointer; }
+  button:focus-visible, select:focus-visible { outline: 2px solid var(--puck); outline-offset: 2px; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  #start { background: var(--puck); color: var(--ink); border-color: var(--puck); font-weight: 600; padding: 9px 22px; }
+
+  .pad { display: none; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 48px); gap: 6px; justify-content: center; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .pad button { padding: 0; font: 600 18px/1 var(--mono); border-color: color-mix(in srgb, var(--blue) 55%, var(--rail)); }
+  .pad button.held { background: color-mix(in srgb, var(--blue) 35%, var(--ink)); }
+  .pad .up { grid-column: 2; grid-row: 1; } .pad .left { grid-column: 1; grid-row: 2; }
+  .pad .down { grid-column: 2; grid-row: 2; } .pad .right { grid-column: 3; grid-row: 2; }
+  @media (pointer: coarse) { .pad { display: grid; } }
+
+  details { color: var(--muted); }
+  details summary { cursor: pointer; color: var(--text); }
+  details p, details ul { max-width: 68ch; margin: 8px 0 0; }
+  details li { margin-block: 3px; }
+  #log { font: 12px/1.4 var(--mono); color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+  #log .err { color: var(--red); }
+  @media (max-width: 520px) { .views { font-size: 11px; } .views kbd { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .bar b { transition: none; } }
+</style>
+</head>
+<body>
+<main class="cabinet">
+  <header>
+    <h1>Air Hockey World Model</h1>
+    <p>There is no game engine here. A diffusion transformer trained on recorded matches imagines every frame from the keys you press, plays the red side itself, and runs entirely in your browser.</p>
+  </header>
+
+  <section class="screen" aria-label="Game">
+    <div class="views">
+      <span class="b"><i></i>Blue view <kbd>W A S D</kbd></span>
+      <span class="r"><i></i>Red view <kbd>Model</kbd></span>
+    </div>
+    <div class="glass">
+      <canvas id="screen" width="256" height="160" aria-label="Both players' views, generated by the model"></canvas>
+      <div class="overlay" id="overlay">
+        <div>
+          <strong id="overlayTitle">Ready when you are</strong>
+          <small id="overlayText">Press Start to download the model and play from a real match position.</small>
+          <div class="bar" id="bar" hidden><b id="barFill"></b></div>
+        </div>
+      </div>
+    </div>
+    <div id="stats"></div>
+  </section>
+
+  <section class="deck" aria-label="Controls">
+    <div class="row">
+      <button id="start" disabled>Start</button>
+      <button id="reset" disabled>Restart match</button>
+      <label class="field"><span>Diffusion steps</span>
+        <select id="steps"><option selected>1</option><option>2</option><option>4</option></select>
+      </label>
+    </div>
+    <div class="pad" aria-label="Blue player touch controls">
+      <button class="up" data-code="KeyW" aria-label="Up">↑</button>
+      <button class="left" data-code="KeyA" aria-label="Left">←</button>
+      <button class="down" data-code="KeyS" aria-label="Down">↓</button>
+      <button class="right" data-code="KeyD" aria-label="Right">→</button>
+    </div>
+    <div id="log"></div>
+  </section>
+
+  <details>
+    <summary>How this works</summary>
+    <p>Each game frame pair is one latent: a 5 × 4 grid of 32 numbers per player. Every step the model denoises the next latent from noise, conditioned on the last 19 latents and on both players' keys, and a small decoder turns it into the two pictures you see. Red's keys are replaced by the model's learned "unknown" input, so the model plays that side itself.</p>
+    <ul>
+      <li>Real time is 30 latents per second (60 frames per second). The model and the two views' decoders run on the CPU in three Web Workers, so a machine with four or more cores plays fastest.</li>
+      <li>The DiT is 36M parameters, quantized to 8 bits. The decoder's feed-forward layers are pruned by 30% with least-squares compensation.</li>
+      <li>Long rollouts drift from real physics, and the match timer can end early, the model's known failure.</li>
+    </ul>
+  </details>
+</main>
+
+<script type="module">
+// Pinned in tools/build_web.py (ORT_VERSION) together with the WebAssembly runtime it packs.
+const ortUrl = () => `https://cdn.jsdelivr.net/npm/onnxruntime-web@${meta.ort_version}/dist/ort.all.bundle.min.mjs`;
+const $ = (id) => document.getElementById(id);
+// The fastest CPU setup: 8-bit DiT and a single-view decoder (one decoder worker per player view).
+const DIT = 'dit_int8', DECODER = 'decoder_int8_p30_1p';
+let ort, meta, context, engine, engineKey, running = false;
+const buffers = new Map();
+
+function log(msg, isError = false) {
+  const line = document.createElement('div');
+  line.textContent = msg;
+  if (isError) line.className = 'err';
+  $('log').prepend(line);
+}
+
+// Poster: the real match position the game starts from, shown before anything downloads.
+const posterImg = new Image();
+posterImg.onload = () => { if (!engine) $('screen').getContext('2d').drawImage(posterImg, 0, 0); };
+posterImg.src = 'assets/poster.png';
+
+// You play blue (player 0); keys in meta.valid_keys order [w, a, s, d]. The model plays red.
+const KEYMAP = { KeyW: 0, KeyA: 1, KeyS: 2, KeyD: 3 };
+const held = new Set();
+addEventListener('keydown', (e) => {
+  if (e.code in KEYMAP) {
+    if (!(e.target instanceof HTMLSelectElement)) e.preventDefault();
+  }
+  held.add(e.code);
+});
+addEventListener('keyup', (e) => held.delete(e.code));
+addEventListener('blur', () => held.clear());
+for (const btn of document.querySelectorAll('.pad button')) {
+  const on = (e) => { e.preventDefault(); held.add(btn.dataset.code); btn.classList.add('held'); };
+  const off = () => { held.delete(btn.dataset.code); btn.classList.remove('held'); };
+  btn.addEventListener('pointerdown', on);
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) btn.addEventListener(ev, off);
+}
+
+function overlay(title, text, progress = null) {
+  $('overlay').hidden = title === null;
+  if (title === null) return;
+  $('overlayTitle').textContent = title;
+  $('overlayText').textContent = text;
+  $('bar').hidden = progress === null;
+  if (progress !== null) $('barFill').style.width = `${Math.round(progress * 100)}%`;
+}
+
+async function download(keys) {
+  const todo = keys.filter((k) => !buffers.has(k));
+  const total = todo.reduce((n, k) => n + meta.files[k].size, 0);
+  let done = 0;
+  for (const key of todo) {
+    const entry = meta.files[key], out = new Uint8Array(entry.size);
+    let offset = 0;
+    for (const name of entry.chunks) {
+      const res = await fetch(name);
+      if (!res.ok) throw new Error(`Download of ${name} failed (HTTP ${res.status}). Reload the page to try again.`);
+      const reader = res.body.getReader();
+      for (;;) {
+        const { done: end, value } = await reader.read();
+        if (end) break;
+        out.set(value, offset); offset += value.length; done += value.length;
+        overlay('Downloading the model', `${(done / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB`, total ? done / total : 1);
+      }
+    }
+    buffers.set(key, out);
+  }
+}
+
+// The model code. It runs inside Web Workers (one for the DiT, one decoder per player view, so the
+// three use separate CPU cores and the decoders draw latent j while the DiT computes latent j+1),
+// and the same source runs on the page itself when workers are unavailable.
+const CORE = String.raw`
+let ort, meta, sess = {}, st;
+const tensor = (data, dims) => new ort.Tensor('float32', data, dims);
+const scalar5 = (x) => tensor(new Float32Array([x]), [1, 1, 1, 1, 1]);
+const latentSize = () => meta.latent_shape.reduce((a, b) => a * b, 1);
+function randn(n) {
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i += 2) {
+    const r = Math.sqrt(-2 * Math.log(1 - Math.random())), t = 2 * Math.PI * Math.random();
+    out[i] = r * Math.cos(t);
+    if (i + 1 < n) out[i + 1] = r * Math.sin(t);
+  }
+  return out;
+}
+const linspace = (a, b, n) => Array.from({ length: n }, (_, i) => (n === 1 ? a : a + ((b - a) * i) / (n - 1)));
+// wm/world_model/schedule.py's linear_quadratic schedule.
+function schedule(n) {
+  if (n < 2) return [0, 1];
+  const nLin = Math.floor(n / 2), lin = linspace(0, 0.1, nLin + 1);
+  const quad = linspace(Math.sqrt(lin[nLin]), 1, n - nLin + 1).map((x) => x * x);
+  return [...lin.slice(0, -1), ...quad];
+}
+// Slide the kv cache by one frame along its time axis (axis 3 of (L, B, heads, T, head_dim)).
+function append(newK, newV) {
+  const [L, B, Hh, T, D] = meta.cache_shape;
+  for (const [cache, fresh] of [[st.pastK, newK], [st.pastV, newV]]) {
+    for (let i = 0; i < L * B * Hh; i++) {
+      const base = i * T * D;
+      cache.copyWithin(base, base + D, base + T * D);
+      cache.set(fresh.subarray(i * D, (i + 1) * D), base + (T - 1) * D);
+    }
+  }
+  st.pastValid.copyWithin(0, 1);
+  st.pastValid[st.pastValid.length - 1] = 1;
+  st.nFrames++;
+}
+// Temporal RoPE at an absolute frame index: cached keys stay rotated at their own index.
+function temporalRope(position) {
+  const D = meta.cache_shape[4], cos = new Float32Array(D), sin = new Float32Array(D);
+  meta.rope_w.forEach((w, i) => {
+    const angle = ((w * position) / meta.rope_fps) % (2 * Math.PI);
+    cos[2 * i] = cos[2 * i + 1] = Math.cos(angle);
+    sin[2 * i] = sin[2 * i + 1] = Math.sin(angle);
+  });
+  return [tensor(cos, [1, D]), tensor(sin, [1, D])];
+}
+async function runDit(z, past, a, tau, tauDelta) {
+  const [H, w, c] = meta.latent_shape;
+  const [ropeCos, ropeSin] = temporalRope(st.nFrames);
+  const out = await sess.dit.run({
+    z_t: tensor(z, [1, 1, H, w, c]), clean_past: tensor(past, [1, 1, H, w, c]), a: tensor(a, [1, 1, a.length]),
+    tau: scalar5(tau), tau_delta: scalar5(tauDelta),
+    past_k: tensor(st.pastK, meta.cache_shape), past_v: tensor(st.pastV, meta.cache_shape),
+    past_valid: tensor(st.pastValid, [meta.n_context_latents]), rope_cos: ropeCos, rope_sin: ropeSin,
+  });
+  return [out.pred_v.data, out.new_k.data, out.new_v.data];
+}
+async function encodeAction(keys, drop) {
+  const out = await sess.action.run({
+    keys: tensor(keys, [meta.n_players, meta.temporal_downsampling, meta.valid_keys.length]),
+    drop: tensor(drop, [meta.n_players]),
+  });
+  return out.a.data;
+}
+export const handlers = {
+  async init({ ortUrl, wasm, meta: m, models, providers }) {
+    ort = await import(ortUrl);
+    ort.env.wasm.wasmBinary = wasm;
+    ort.env.wasm.numThreads = 1;
+    ort.env.wasm.proxy = false;
+    meta = m;
+    for (const [name, buf] of Object.entries(models))
+      sess[name] = await ort.InferenceSession.create(buf, { executionProviders: providers, graphOptimizationLevel: 'all' });
+    return true;
+  },
+  // DiT: read the real context (latents + the keys that were pressed) into the kv cache.
+  async prefill({ latents, keys, nFrames }) {
+    const n = meta.cache_shape.reduce((a, b) => a * b, 1), size = latentSize(), nk = meta.valid_keys.length, td = meta.temporal_downsampling;
+    st = { pastK: new Float32Array(n), pastV: new Float32Array(n), pastValid: new Float32Array(meta.n_context_latents), nFrames: 0, prev: null };
+    const latent = (j) => latents.subarray(j * size, (j + 1) * size);
+    for (let i = 0; i < meta.n_context_latents; i++) {
+      let a = new Float32Array(meta.a0);
+      if (i > 0) {
+        const k = new Float32Array(meta.n_players * td * nk);
+        for (let p = 0; p < meta.n_players; p++)
+          for (let f = 0; f < td; f++)
+            for (let q = 0; q < nk; q++) k[(p * td + f) * nk + q] = keys[(p * nFrames + i * td - 1 + f) * nk + q];
+        a = await encodeAction(k, new Float32Array(meta.n_players));
+      }
+      const [, kk, vv] = await runDit(latent(i), i === 0 ? new Float32Array(meta.bos) : latent(i - 1), a, 1, 0);
+      append(kk, vv);
+    }
+    st.prev = latent(meta.n_context_latents - 1).slice();
+    return st.prev.slice();
+  },
+  // DiT: one new latent from noise, conditioned on both players' keys.
+  async step({ keys, drop, steps }) {
+    const t0 = performance.now();
+    const a = await encodeAction(keys, drop);
+    const ts = schedule(steps), x = randn(latentSize());
+    let k, v;
+    for (let s = 0; s < ts.length - 1; s++) {
+      const dt = ts[s + 1] - ts[s];
+      let pred;
+      [pred, k, v] = await runDit(x, st.prev, a, ts[s], dt);
+      for (let i = 0; i < x.length; i++) x[i] += dt * pred[i];
+    }
+    append(k, v);
+    st.prev = x;
+    return { x: x.slice(), ms: (performance.now() - t0) / (ts.length - 1) };
+  },
+  // Decoder: latents (views, 1, h, w, c) -> RGBA pixels of each view's frames, (views, td, H, W, 4).
+  async decode({ z, views }) {
+    const t0 = performance.now();
+    const [ph, w, c] = meta.player_latent_shape;
+    const out = await sess.decoder.run({ z: tensor(z, [views, 1, ph, w, c]) });
+    const f = out.frames.data, [, H, W] = meta.frame_shape, plane = H * W, n = views * meta.temporal_downsampling;
+    const rgba = new Uint8ClampedArray(n * plane * 4);
+    for (let i = 0; i < n; i++)
+      for (let px = 0; px < plane; px++) {
+        const s = i * 3 * plane + px, d = 4 * (i * plane + px);
+        rgba[d] = 255 * f[s]; rgba[d + 1] = 255 * f[s + plane]; rgba[d + 2] = 255 * f[s + 2 * plane]; rgba[d + 3] = 255;
+      }
+    return { rgba, ms: performance.now() - t0 };
+  },
+};
+if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
+  self.onmessage = async ({ data }) => {
+    try {
+      const result = await handlers[data.type](data);
+      const transfer = [result?.x?.buffer, result?.rgba?.buffer].filter(Boolean);
+      self.postMessage({ id: data.id, result }, transfer);
+    } catch (err) {
+      self.postMessage({ id: data.id, error: String(err?.message || err) });
+    }
+  };
+}
+`;
+
+// One copy of the core: in its own Web Worker, or imported on the page when workers are unavailable.
+class Core {
+  static async create(useWorker) {
+    const core = new Core();
+    const url = URL.createObjectURL(new Blob([CORE], { type: 'text/javascript' }));
+    if (!useWorker) {
+      core.handlers = (await import(url)).handlers;
+      return core;
+    }
+    core.pending = new Map(); core.nextId = 0;
+    core.worker = new Worker(url, { type: 'module' });
+    core.worker.onmessage = ({ data }) => {
+      const p = core.pending.get(data.id); core.pending.delete(data.id);
+      if (data.error) p.reject(new Error(data.error)); else p.resolve(data.result);
+    };
+    core.worker.onerror = (e) => {
+      e.preventDefault?.();
+      for (const p of core.pending.values()) p.reject(new Error(e.message || 'A worker failed to start.'));
+      core.pending.clear();
+    };
+    return core;
+  }
+  call(type, payload = {}, transfer = []) {
+    if (this.handlers) return this.handlers[type]({ type, ...payload });
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.worker.postMessage({ type, id, ...payload }, transfer);
+    });
+  }
+  terminate() { this.worker?.terminate(); }
+}
+
+// Red's keys are dropped (the learned "unknown" input), so the model plays red.
+const dropMask = () => new Float32Array([0, 1]);
+function liveKeys() {
+  const nk = meta.valid_keys.length, td = meta.temporal_downsampling, keys = new Float32Array(meta.n_players * td * nk);
+  for (const [code, k] of Object.entries(KEYMAP))
+    if (held.has(code)) for (let f = 0; f < td; f++) keys[f * nk + k] = 1;
+  return keys;
+}
+
+let stats = { ditMs: [], decMs: [], latentMs: [] };
+let frameQueue = Promise.resolve();
+
+// Decode one latent into both views and queue its frames for display at the game's 60 fps.
+async function decodeAndDraw(x) {
+  const [, H, W] = meta.frame_shape, td = meta.temporal_downsampling, P = meta.n_players, plane = H * W;
+  // Each player's view is its own slice of the tiled latent (the height is players x h).
+  const half = x.length / P, viewZ = (p) => x.slice(p * half, (p + 1) * half);
+  let outs;
+  if (engine.decoders) {
+    outs = await Promise.all(engine.decoders.map((d, p) => { const z = viewZ(p); return d.call('decode', { z, views: 1 }, [z.buffer]); }));
+  } else {
+    outs = [];
+    for (let p = 0; p < P; p++) outs.push(await engine.dit.call('decode', { z: viewZ(p), views: 1 }));
+  }
+  stats.decMs.push(engine.decoders ? Math.max(...outs.map((o) => o.ms)) : outs.reduce((s, o) => s + o.ms, 0));
+  const views = outs.map((o) => o.rgba);  // views[p] = RGBA of player p's td frames
+  const images = [];
+  for (let f = 0; f < td; f++) {
+    const img = new ImageData(W * P, H);
+    for (let p = 0; p < P; p++)
+      for (let y = 0; y < H; y++)
+        img.data.set(views[p].subarray((f * plane + y * W) * 4, (f * plane + (y + 1) * W) * 4), (y * W * P + p * W) * 4);
+    images.push(img);
+  }
+  frameQueue = frameQueue.then(async () => {
+    for (const img of images) {
+      $('screen').getContext('2d').putImageData(img, 0, 0);
+      await new Promise((r) => setTimeout(r, 1000 / meta.fps));
+    }
+  });
+}
+
+const median = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : NaN);
+function showStats() {
+  const ms = median(stats.latentMs.slice(-20));
+  if (!isFinite(ms)) return;
+  $('stats').innerHTML = `<b>${(2000 / ms).toFixed(1)}</b> frames/s (real game: 60) · model ${median(stats.ditMs.slice(-40)).toFixed(0)} ms · picture ${median(stats.decMs.slice(-20)).toFixed(0)} ms · ${engineKey}`;
+}
+
+let loopDone = Promise.resolve();
+async function loop() {
+  let drawing = Promise.resolve(), last = performance.now();
+  while (running) {
+    const { x, ms } = await engine.dit.call('step', { keys: liveKeys(), drop: dropMask(), steps: +$('steps').value });
+    stats.ditMs.push(ms);
+    await drawing;  // at most one latent being decoded while the next one is generated
+    drawing = decodeAndDraw(x);
+    if (!engine.decoders) await drawing;  // on the page there is nothing to overlap with
+    const now = performance.now();
+    stats.latentMs.push(now - last); last = now;
+    showStats();
+  }
+  await drawing;
+}
+
+async function load() {
+  if (!ort) {
+    overlay('Loading', 'Fetching the runtime', null);
+    ort = true;
+    await download(['wasm']);
+  }
+  if (engine) return;
+  const ditKey = DIT, decKey = DECODER, providers = ['wasm'];
+  await download(['action', ditKey, decKey]);
+  overlay('Starting the model', 'Compiling for your device', null);
+  const init = (core, models) => core.call('init', {
+    ortUrl: ortUrl(), wasm: buffers.get('wasm'), meta, providers,
+    models: Object.fromEntries(Object.entries(models).map(([name, key]) => [name, buffers.get(key)])),
+  });
+  try {
+    // Three workers: the DiT and one decoder per view, each on its own CPU core.
+    const [dit, d0, d1] = await Promise.all([Core.create(true), Core.create(true), Core.create(true)]);
+    await Promise.all([init(dit, { action: 'action', dit: ditKey }), init(d0, { decoder: decKey }), init(d1, { decoder: decKey })]);
+    engine = { dit, decoders: [d0, d1] };
+    engineKey = 'CPU · 3 workers';
+  } catch (err) {
+    log(`Workers did not start (${err.message}). Running everything on one thread instead.`, true);
+    const core = await Core.create(false);
+    await init(core, { action: 'action', dit: ditKey, decoder: decKey });
+    engine = { dit: core, decoders: null };
+    engineKey = 'CPU · 1 thread';
+  }
+  log(`Running on ${engineKey}.`);
+}
+
+async function start() {
+  running = false;
+  await loopDone;
+  await frameQueue;
+  $('start').disabled = true;
+  try {
+    await load();
+    overlay('Warming up', 'Reading the last second of a real match', null);
+    const last = await engine.dit.call('prefill', { latents: context.latents, keys: context.keys, nFrames: context.n_frames });
+    stats = { ditMs: [], decMs: [], latentMs: [] };
+    await decodeAndDraw(last);
+    overlay(null);
+    $('reset').disabled = false;
+    $('start').textContent = 'Pause';
+    $('start').disabled = false;
+    running = true;
+    loopDone = loop().catch(fail);
+  } catch (err) { fail(err); }
+}
+
+function fail(err) {
+  running = false;
+  console.error(err);
+  log(String(err.message || err), true);
+  overlay('Something went wrong', String(err.message || err), null);
+  $('start').disabled = false;
+  $('start').textContent = 'Start';
+}
+
+$('start').addEventListener('click', () => {
+  if (running) { running = false; $('start').textContent = 'Resume'; return; }
+  if (engine && $('start').textContent === 'Resume') { running = true; $('start').textContent = 'Pause'; loopDone = loop().catch(fail); return; }
+  start();
+});
+$('reset').addEventListener('click', start);
+
+try {
+  [meta, context] = await Promise.all(['assets/meta.json', 'assets/context.json'].map((u) => fetch(u).then((r) => {
+    if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`);
+    return r.json();
+  })));
+  context.latents = new Float32Array(context.latents);
+  context.keys = new Float32Array(context.keys);
+  const mb = ['wasm', 'action', DIT, DECODER].reduce((n, k) => n + meta.files[k].size, 0) / 1e6;
+  $('overlayText').textContent = `Press Start to download the game (${Math.round(mb)} MB, once) and play from a real match position.`;
+  $('start').disabled = false;
+} catch (err) {
+  // The page's own files are missing (web/assets/ is built by tools/build_web.py) or the host failed.
+  fail(new Error(`Could not load the game data (${err.message}). If you serve web/ yourself, build it first: python -m tools.build_web`));
+  $('start').disabled = true;
+}
+window.wm = { get stats() { return stats; }, get engineKey() { return engineKey; }, start };
+</script>
+</body>
+</html>
